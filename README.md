@@ -44,12 +44,6 @@ This project implements a gaming achievement system using MongoDB and Redis as t
   python scripts/mongodb/backup_restore.py
   ```
 
-- **Replica Set Setup**
-  To configure a MongoDB replica set, run:
-  ```bash
-  python scripts/mongodb/replica_setup.py
-  ```
-
 - **API Interaction**
   Use the API script to interact with the MongoDB database:
   ```bash
@@ -68,18 +62,6 @@ This project implements a gaming achievement system using MongoDB and Redis as t
   To set up user roles and permissions for Redis, execute:
   ```bash
   python scripts/redis/permissions.py
-  ```
-
-- **Backup and Restore**
-  To backup or restore the Redis database, use:
-  ```bash
-  python scripts/redis/backup_restore.py
-  ```
-
-- **Replication Setup**
-  To configure Redis replication, run:
-  ```bash
-  python scripts/redis/replication_setup.py
   ```
 
 - **API Interaction**
