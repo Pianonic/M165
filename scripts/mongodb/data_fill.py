@@ -1,10 +1,9 @@
 import pymongo
 import random
 from faker import Faker
-import datetime
 
-# Verbindung zur MongoDB herstellen
-client = pymongo.MongoClient("mongodb://localhost:27017/")
+# Verbindung als Admin (mit Authentication)
+client = pymongo.MongoClient("mongodb://admin:adminpassword123@localhost:27017/admin")
 db = client["game_stats"]
 players = db["players"]
 achievements = db["achievements"]
