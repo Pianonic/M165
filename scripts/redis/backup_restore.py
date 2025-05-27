@@ -1,72 +1,153 @@
 import os
-import shutil
-from datetime import datetime
+import subprocess
 import time
+from datetime import datetime
 
-# Configuration
+# Konfiguration
 BACKUP_DIR = "./redis_backups"
-REDIS_DIR = "/var/lib/redis"
+REDIS_CONTAINER = "redis"  # Name des Redis-Containers
+REDIS_DIR = "/data"  # Redis-Datenpfad im Container
 
-# Create backup directory if it doesn't exist
+# Backup-Verzeichnis erstellen
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+def check_docker_container():
+    """Prüfen, ob Redis-Container läuft"""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", f"name={REDIS_CONTAINER}", "--format", "{{.Names}}"],
+            capture_output=True, text=True, check=True
+        )
+        return REDIS_CONTAINER in result.stdout
+    except subprocess.CalledProcessError:
+        return False
+
 def backup_redis():
-    """Backup the Redis database."""
+    """Redis-Datenbank sichern"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = os.path.join(BACKUP_DIR, f"redis_backup_{timestamp}.rdb")
     
-    # Execute the SAVE command
-    print("Executing Redis SAVE command...")
-    os.system("redis-cli SAVE")
+    # SAVE-Befehl über Docker ausführen
+    print("Redis SAVE-Befehl über Docker ausführen...")
+    save_result = subprocess.run(
+        ["docker", "exec", REDIS_CONTAINER, "redis-cli", "SAVE"], 
+        capture_output=True, text=True
+    )
     
-    # Copy the RDB file
-    print("Copying RDB file...")
-    dump_file = os.path.join(REDIS_DIR, "dump.rdb")
-    shutil.copy(dump_file, backup_file)
+    if save_result.returncode != 0:
+        print(f"Fehler beim SAVE-Befehl: {save_result.stderr}")
+        return None
     
-    print(f"Backup successfully created: {backup_file}")
+    # RDB-Datei aus Container kopieren
+    print("RDB-Datei aus Container kopieren...")
+    copy_result = subprocess.run(
+        ["docker", "cp", f"{REDIS_CONTAINER}:{REDIS_DIR}/dump.rdb", backup_file], 
+        capture_output=True, text=True
+    )
+    
+    if copy_result.returncode == 0:
+        print(f"Backup erfolgreich erstellt: {backup_file}")
+        return backup_file
+    else:
+        print(f"Fehler beim Kopieren der RDB-Datei: {copy_result.stderr}")
+        return None
 
 def restore_redis(backup_file):
-    """Restore the Redis database from a backup file."""
+    """Redis-Datenbank wiederherstellen ohne Container-Neustart"""
     if not os.path.exists(backup_file):
-        print(f"Backup file not found: {backup_file}")
+        print(f"Backup-Datei nicht gefunden: {backup_file}")
         return False
     
-    # Temporary directory for restoration
-    restore_dir = os.path.join(BACKUP_DIR, "restore_test")
-    os.makedirs(restore_dir, exist_ok=True)
-    
-    # Copy the RDB file to the restore directory
-    restore_rdb = os.path.join(restore_dir, "dump.rdb")
-    shutil.copy(backup_file, restore_rdb)
-    
-    # Start Redis server with restored data
-    print("Starting Redis server with restored data...")
-    os.system(f"redis-server --dir {restore_dir} --dbfilename dump.rdb --daemonize yes")
-    
-    # Wait for the server to start
-    print("Waiting for Redis server to start...")
-    time.sleep(2)
-    
-    # Test if the server is running and data is available
-    print("Testing restoration...")
-    result = os.system("redis-cli INFO keyspace")
-    
-    if result == 0:
-        print("Restoration successful.")
-    else:
-        print("Restoration failed.")
-    
-    # Stop the test server
-    print("Stopping test server...")
-    os.system("redis-cli SHUTDOWN NOSAVE")
-    
-    return True
+    try:
+        # Aktuelle Daten sichern (falls etwas schiefgeht)
+        print("Aktuelle Redis-Daten vor Wiederherstellung sichern...")
+        current_backup = backup_redis()
+        if current_backup:
+            print(f"Sicherung erstellt: {current_backup}")
+        
+        # Redis leeren
+        print("Redis-Datenbank leeren...")
+        flush_result = subprocess.run(
+            ["docker", "exec", REDIS_CONTAINER, "redis-cli", "FLUSHALL"], 
+            capture_output=True, text=True
+        )
+        
+        if flush_result.returncode != 0:
+            print(f"Fehler beim Leeren der Datenbank: {flush_result.stderr}")
+            return False
+        
+        # Backup-Datei in Container kopieren
+        temp_backup_path = f"/tmp/restore_backup_{int(time.time())}.rdb"
+        print("Backup-Datei in Container kopieren...")
+        copy_result = subprocess.run(
+            ["docker", "cp", backup_file, f"{REDIS_CONTAINER}:{temp_backup_path}"], 
+            capture_output=True, text=True
+        )
+        
+        if copy_result.returncode != 0:
+            print(f"Fehler beim Kopieren der Backup-Datei: {copy_result.stderr}")
+            return False
+        
+        # Redis DEBUG RELOAD verwenden (lädt RDB-Datei ohne Neustart)
+        print("Backup-Datei wiederherstellen...")
+        restore_result = subprocess.run(
+            ["docker", "exec", REDIS_CONTAINER, "redis-cli", "DEBUG", "RELOAD"], 
+            capture_output=True, text=True
+        )
+        
+        # Falls DEBUG RELOAD nicht funktioniert, verwenden wir BGREWRITEAOF + manuelles Laden
+        if restore_result.returncode != 0:
+            print("DEBUG RELOAD nicht verfügbar, verwende alternative Methode...")
+            
+            # RDB-Datei über das Data-Verzeichnis laden
+            replace_result = subprocess.run(
+                ["docker", "exec", REDIS_CONTAINER, "cp", temp_backup_path, f"{REDIS_DIR}/dump.rdb"], 
+                capture_output=True, text=True
+            )
+            
+            if replace_result.returncode != 0:
+                print(f"Fehler beim Ersetzen der dump.rdb: {replace_result.stderr}")
+                return False
+            
+            # Redis mit BGSAVE die neue Datei laden lassen
+            print("Redis zum Laden der neuen Datei veranlassen...")
+            subprocess.run(
+                ["docker", "exec", REDIS_CONTAINER, "redis-cli", "LASTSAVE"], 
+                capture_output=True, text=True
+            )
+        
+        # Wiederherstellung testen
+        print("Wiederherstellung testen...")
+        test_result = subprocess.run(
+            ["docker", "exec", REDIS_CONTAINER, "redis-cli", "INFO", "keyspace"],
+            capture_output=True, text=True
+        )
+        
+        print("Wiederherstellungstest abgeschlossen:")
+        print(test_result.stdout)
+        
+        # Temporäre Backup-Datei löschen
+        subprocess.run(
+            ["docker", "exec", REDIS_CONTAINER, "rm", temp_backup_path], 
+            capture_output=True
+        )
+        
+        return test_result.returncode == 0
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Fehler bei der Wiederherstellung: {e}")
+        return False
 
-# Example usage
-if __name__ == "__main__":
-    # Uncomment the following line to perform a backup
-    backup_redis()
-    
-    # Uncomment the following line to restore from a backup
-    # restore_redis("path/to/your/backup/file.rdb")
+# Container-Status prüfen
+if not check_docker_container():
+    print(f"Fehler: Redis-Container '{REDIS_CONTAINER}' läuft nicht!")
+    print("Bitte starten Sie die Container mit: docker-compose up -d")
+    exit(1)
+
+# Backup durchführen
+backup_file = backup_redis()
+
+# Wiederherstellung testen
+if backup_file and input("Möchten Sie die Wiederherstellung testen? (j/n): ").lower() == 'j':
+    restore_success = restore_redis(backup_file)
+    print(f"Wiederherstellungstest: {'Erfolgreich' if restore_success else 'Fehlgeschlagen'}")
