@@ -1,23 +1,68 @@
-from redis import Redis
+import redis
 
-class RedisPermissions:
-    def __init__(self, host='localhost', port=6379, password=None):
-        self.redis = Redis(host=host, port=port, password=password)
+def test_user(user):
+    print(f"\n=== {user['name'].upper()} Test ({user['desc']}) ===")
+    r = redis.Redis(
+        host='localhost',
+        port=6379,
+        username=user['name'],
+        password=user['password']
+    )
+    # Lesetest (immer erwartet erlaubt)
+    try:
+        count = r.zcard("leaderboard:level")
+        print(f"✔ Kann lesen: {count} Spieler im Leaderboard (zcard)")
+    except Exception as e:
+        print(f"✗ Kann nicht lesen: {e}")
+    # Schreibtest
+    try:
+        r.set(f"test:{user['name']}", "value")
+        if user['name'] == 'analytics':
+            print("✗ Kann schreiben, sollte aber blockiert sein!")
+        else:
+            print("✔ Kann schreiben (set)")
+        r.delete(f"test:{user['name']}")
+    except Exception as e:
+        if user['name'] == 'analytics':
+            print(f"✔ Kann nicht schreiben (korrekt blockiert): {e}")
+        else:
+            print(f"✗ Kann nicht schreiben: {e}")
+    # Admin-Test
+    try:
+        r.config_get()
+        if user['name'] == 'admin':
+            print("✔ Kann Admin-Befehl ausführen (config get)")
+        else:
+            print("✗ Kann Admin-Befehl ausführen, sollte aber blockiert sein!")
+    except Exception as e:
+        if user['name'] == 'admin':
+            print(f"✗ Kann keinen Admin-Befehl ausführen: {e}")
+        else:
+            print(f"✔ Kann keinen Admin-Befehl ausführen (korrekt blockiert): {e}")
+    r.close()
 
-    def create_user(self, username, password, permissions):
-        self.redis.execute_command('ACL SETUSER', username, 'on', f'>{password}', *permissions)
+def test_redis_permissions():
+    users = [
+        {
+            'name': 'analytics',
+            'password': 'analytics123',
+            'desc': 'Nur Lesezugriff'
+        },
+        {
+            'name': 'gamemaster',
+            'password': 'master123',
+            'desc': 'Lese- und Schreibrechte'
+        },
+        {
+            'name': 'admin',
+            'password': 'admin123',
+            'desc': 'Vollzugriff'
+        }
+    ]
+    print("=== REDIS BENUTZER-BERECHTIGUNGEN TEST ===")
+    for user in users:
+        test_user(user)
+    print("\n=== Tests abgeschlossen ===")
 
-    def delete_user(self, username):
-        self.redis.execute_command('ACL DELUSER', username)
-
-    def list_users(self):
-        return self.redis.execute_command('ACL LIST')
-
-    def get_user_permissions(self, username):
-        return self.redis.execute_command('ACL GETUSER', username)
-
-    def set_user_permissions(self, username, permissions):
-        self.redis.execute_command('ACL SETUSER', username, *permissions)
-
-    def close(self):
-        self.redis.close()
+if __name__ == "__main__":
+    test_redis_permissions()

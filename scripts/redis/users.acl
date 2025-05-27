@@ -1,0 +1,3 @@
+user analytics on >analytics123 ~* +@read -@write -@admin -@dangerous
+user gamemaster on >master123 ~* +@read +@write -@admin -@dangerous
+user admin on >admin123 ~* +@all

@@ -4,8 +4,8 @@ import json
 import time
 from faker import Faker
 
-# Verbindung zu Redis herstellen
-r = redis.Redis(host='localhost', port=6379, db=0)
+# Verbindung zu Redis herstellen (mit Admin-Benutzer für volle Rechte)
+r = redis.Redis(host='localhost', port=6379, db=0, username='admin', password='admin123')
 fake = Faker()
 
 # Redis löschen für Neustart
