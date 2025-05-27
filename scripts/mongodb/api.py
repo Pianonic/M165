@@ -11,7 +11,7 @@ class GameStatsAPI:
         self.achievements = self.db["achievements"]
     
     def close(self):
-        """Verbindung schließen"""
+        """Verbindung schliessen"""
         self.client.close()
     
     def create_player(self, username, email):
