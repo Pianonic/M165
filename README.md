@@ -22,7 +22,7 @@ This project implements a gaming achievement system using MongoDB and Redis as t
    docker compose up -d
    ```
 
-## Usage Examples
+## Scripts
 
 ### MongoDB Scripts
 
