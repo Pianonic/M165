@@ -2,59 +2,53 @@ import subprocess
 import os
 from datetime import datetime
 
-# Configuration
-MONGODB_URI = "mongodb://localhost:27017"
+# Konfiguration
+MONGODB_USER = "admin"
+MONGODB_PASSWORD = "adminpassword123"
+MONGODB_HOST = "localhost"
+MONGODB_PORT = 27017
+MONGODB_URI = f"mongodb://{MONGODB_USER}:{MONGODB_PASSWORD}@{MONGODB_HOST}:{MONGODB_PORT}/?authSource=admin"
 DB_NAME = "game_stats"
 BACKUP_DIR = "./mongodb_backups"
+MONGODUMP_PATH = r"scripts\mongodb\db_tools\mongodump.exe"
+MONGORESTORE_PATH = r"scripts\mongodb\db_tools\mongorestore.exe"
 
-# Create backup directory
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 def backup_mongodb():
-    """Backup MongoDB database"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(BACKUP_DIR, f"backup_{timestamp}")
-    
-    # Run mongodump
-    result = subprocess.run([
-        "mongodump",
-        "--uri", MONGODB_URI,
-        "--db", DB_NAME,
-        "--out", backup_path
-    ], capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        print(f"Backup successfully created at: {backup_path}")
-        return backup_path
-    else:
-        print(f"Error during backup: {result.stderr}")
-        return None
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-def restore_mongodb(backup_path, to_db_name="game_stats_restored"):
-    """Restore MongoDB database"""
+    backup_path = os.path.join(BACKUP_DIR, f"backup_{ts}")
+
+    result = subprocess.run([
+        MONGODUMP_PATH, "--uri", MONGODB_URI, "--db", DB_NAME, "--out", backup_path
+    ], capture_output=True, text=True)
+
+    return backup_path if result.returncode == 0 else None
+
+def restore_mongodb(backup_path, target_db):
     db_backup_path = os.path.join(backup_path, DB_NAME)
-    
-    # Run mongorestore
-    result = subprocess.run([
-        "mongorestore",
-        "--uri", MONGODB_URI,
-        "--nsFrom", f"{DB_NAME}.*",
-        "--nsTo", f"{to_db_name}.*",
-        db_backup_path
-    ], capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        print(f"Restoration successful to database: {to_db_name}")
-        return True
-    else:
-        print(f"Error during restoration: {result.stderr}")
-        return False
 
-# Backup and restoration example
-if __name__ == "__main__":
+    result = subprocess.run([
+        MONGORESTORE_PATH, "--uri", MONGODB_URI, "--db", target_db, db_backup_path
+    ], capture_output=True, text=True)
+
+    return result.returncode == 0
+
+def main():
     backup_path = backup_mongodb()
+
+    if not backup_path:
+        print("Backup fehlgeschlagen.")
+        return
     
-    # If backup is successful, test restoration
-    if backup_path:
-        restore_success = restore_mongodb(backup_path)
-        print(f"Restoration test: {'Successful' if restore_success else 'Failed'}")
+    restored_db = f"{DB_NAME}_restored"
+
+    if not restore_mongodb(backup_path, restored_db):
+        print("Restore fehlgeschlagen.")
+        return
+    
+    print(f"Backup erfolgreich als {restored_db} wiederhergestellt.")
+
+if __name__ == "__main__":
+    main()
