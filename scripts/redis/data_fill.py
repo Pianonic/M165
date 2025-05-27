@@ -1,7 +1,7 @@
-import json
-import time
 import redis
 import random
+import json
+import time
 from faker import Faker
 
 # Verbindung zu Redis herstellen
@@ -37,6 +37,10 @@ for i in range(1, 101):
     
     # Spielzeit-Statistik
     r.hset(f"playtime:{player_id}", "total", random.randint(1, 500))
+    
+    # Für einige Spieler Online-Status setzen
+    if random.random() > 0.7:
+        r.set(f"online:{player_id}", 1, ex=3600)  # Ablauf nach 1 Stunde
 
 # Globale Spiel-Statistiken
 r.set("stats:total_players", 100)

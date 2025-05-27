@@ -87,3 +87,18 @@ This project implements a gaming achievement system using MongoDB and Redis as t
   ```bash
   python scripts/redis/api.py
   ```
+
+#### Queries
+  The following scripts can be used to run the Redis queries:
+  - **Top 10 Players of Leaderboard**
+    ```bash
+    python scripts/redis/queries/top_10_players_of_leaderboard.py
+    ```
+  - **Number of Online Players**
+    ```bash
+    python scripts/redis/queries/number_online_player.py
+    ```
+  - **Last Player Events**
+    ```bash
+    python scripts/redis/queries/last_player_events.py
+    ```
